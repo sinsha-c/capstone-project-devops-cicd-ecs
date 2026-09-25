@@ -36,6 +36,9 @@ module "alb" {
   public_subnets = module.vpc.public_subnet_ids
   alb_sg_id      = module.security.alb_sg_id
   container_port = var.container_port
+
+  target_group_name = "${var.project_name}-tg"
+  target_group_port = var.container_port
 }
 
 module "ecs" {
