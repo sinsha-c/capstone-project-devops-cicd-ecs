@@ -1,8 +1,11 @@
 module "vpc" {
   source = "./modules/vpc"
-  project_name = var.project_name
-  environment  = var.environment
-  vpc_cidr     = var.vpc_cidr
+
+  project_name          = var.project_name
+  environment           = var.environment
+  vpc_cidr              = var.vpc_cidr
+  public_subnet_cidrs   = var.public_subnet_cidrs
+  private_subnet_cidrs  = var.private_subnet_cidrs
 }
 
 module "security" {
@@ -43,10 +46,11 @@ module "alb" {
 
 module "ecs" {
   source = "./modules/ecs"
+
   project_name          = var.project_name
   environment           = var.environment
   aws_region            = var.aws_region
-  public_subnets        = module.vpc.public_subnet_ids
+  private_subnets       = module.vpc.private_subnet_ids
   ecs_security_group_id = module.security.ecs_sg_id
   target_group_arn      = module.alb.target_group_arn
   execution_role_arn    = module.iam.ecs_execution_role_arn
