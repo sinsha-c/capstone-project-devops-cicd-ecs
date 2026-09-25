@@ -1,0 +1,12 @@
+---
+- name: Configure DevOps EC2 with Monitoring tools
+  hosts: devops
+  become: true
+
+  roles:
+    - docker
+    - trivy
+    - sonarqube
+    - node_exporter
+    - prometheus
+    - grafana

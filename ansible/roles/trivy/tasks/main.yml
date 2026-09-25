@@ -1,0 +1,45 @@
+---
+- name: Install prerequisites for Trivy repository
+  ansible.builtin.apt:
+    name:
+      - wget
+      - gnupg
+      - apt-transport-https
+    state: present
+    update_cache: true
+
+- name: Download Trivy repository GPG key
+  ansible.builtin.get_url:
+    url: "{{ trivy_key_url }}"
+    dest: /tmp/trivy-public.key
+    mode: "0644"
+
+- name: Convert Trivy GPG key to keyring format
+  ansible.builtin.command:
+    cmd: >
+      gpg --dearmor
+      --output {{ trivy_keyring }}
+      /tmp/trivy-public.key
+    creates: "{{ trivy_keyring }}"
+
+- name: Add Trivy APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by={{ trivy_keyring }}] {{ trivy_repo_url }} generic main"
+    filename: trivy
+    state: present
+
+- name: Install Trivy
+  ansible.builtin.apt:
+    name: trivy
+    state: present
+    update_cache: true
+
+- name: Verify Trivy installation
+  ansible.builtin.command:
+    cmd: trivy --version
+  register: trivy_version
+  changed_when: false
+
+- name: Display Trivy version
+  ansible.builtin.debug:
+    msg: "{{ trivy_version.stdout }}"

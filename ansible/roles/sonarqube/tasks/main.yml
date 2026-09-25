@@ -1,0 +1,14 @@
+---
+- name: Pull SonarQube image
+  community.docker.docker_image:
+    name: "{{ sonarqube_image }}"
+    source: pull
+
+- name: Create SonarQube container
+  community.docker.docker_container:
+    name: "{{ sonarqube_container_name }}"
+    image: "{{ sonarqube_image }}"
+    state: started
+    restart_policy: unless-stopped
+    published_ports:
+      - "{{ sonarqube_port }}:9000"

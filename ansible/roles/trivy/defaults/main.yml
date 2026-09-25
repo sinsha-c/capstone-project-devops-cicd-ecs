@@ -1,0 +1,5 @@
+---
+trivy_repo_url: "https://aquasecurity.github.io/trivy-repo/deb"
+trivy_key_url: "https://aquasecurity.github.io/trivy-repo/deb/public.key"
+trivy_keyring: "/usr/share/keyrings/trivy.gpg"
+trivy_repo_file: "/etc/apt/sources.list.d/trivy.list"

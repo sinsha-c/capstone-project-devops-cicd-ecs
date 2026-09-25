@@ -1,0 +1,6 @@
+---
+- name: Configure Grafana server
+  hosts: grafana
+  become: true
+  roles: [common, docker, grafana]
+

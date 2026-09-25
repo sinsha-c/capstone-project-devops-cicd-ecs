@@ -1,0 +1,4 @@
+---
+sonarqube_image: "sonarqube:lts-community"
+sonarqube_container_name: "sonarqube"
+sonarqube_port: 9000

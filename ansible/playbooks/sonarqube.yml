@@ -1,0 +1,6 @@
+---
+- name: Configure SonarQube server
+  hosts: sonarqube
+  become: true
+  roles: [common, docker, sonarqube]
+

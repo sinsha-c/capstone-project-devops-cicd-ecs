@@ -1,0 +1,4 @@
+---
+grafana_repo_url: "https://apt.grafana.com"
+grafana_key_url: "https://apt.grafana.com/gpg.key"
+grafana_keyring: "/etc/apt/keyrings/grafana.gpg"
