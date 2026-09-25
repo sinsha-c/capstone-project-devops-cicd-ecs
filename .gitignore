@@ -18,6 +18,10 @@ revision.json
 trivy-report.txt
 *.tfplan
 tfplan
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
 
 # ─── Editors & IDEs ──────────────────────────────────────────────────────────
 .vscode/
