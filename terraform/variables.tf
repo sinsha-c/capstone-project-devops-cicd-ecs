@@ -35,3 +35,8 @@ variable "desired_count" {
   type    = number
   default = 1
 }
+
+variable "alert_email" {
+  type        = string
+  description = "Email address for CloudWatch alerts"
+}

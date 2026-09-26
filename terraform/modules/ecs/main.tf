@@ -54,6 +54,12 @@ resource "aws_ecs_service" "this" {
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
 
+  lifecycle {
+    ignore_changes = [
+      task_definition
+    ]
+  }
+
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
 

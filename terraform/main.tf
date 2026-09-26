@@ -1,15 +1,15 @@
 module "vpc" {
   source = "./modules/vpc"
 
-  project_name          = var.project_name
-  environment           = var.environment
-  vpc_cidr              = var.vpc_cidr
-  public_subnet_cidrs   = var.public_subnet_cidrs
-  private_subnet_cidrs  = var.private_subnet_cidrs
+  project_name         = var.project_name
+  environment          = var.environment
+  vpc_cidr             = var.vpc_cidr
+  public_subnet_cidrs  = var.public_subnet_cidrs
+  private_subnet_cidrs = var.private_subnet_cidrs
 }
 
 module "security" {
-  source = "./modules/security"
+  source         = "./modules/security"
   project_name   = var.project_name
   environment    = var.environment
   vpc_id         = module.vpc.vpc_id
@@ -17,22 +17,26 @@ module "security" {
 }
 
 module "ecr" {
-  source = "./modules/ecr"
+  source       = "./modules/ecr"
   project_name = var.project_name
 }
 
 module "iam" {
-  source = "./modules/iam"
+  source       = "./modules/iam"
   project_name = var.project_name
 }
 
 module "cloudwatch" {
   source = "./modules/cloudwatch"
-  project_name = var.project_name
+
+  project_name     = var.project_name
+  target_group_arn = module.alb.target_group_arn
+  alb_arn          = module.alb.alb_arn
+  alert_email      = var.alert_email
 }
 
 module "alb" {
-  source = "./modules/alb"
+  source         = "./modules/alb"
   project_name   = var.project_name
   environment    = var.environment
   vpc_id         = module.vpc.vpc_id

@@ -17,3 +17,5 @@ private_subnet_cidrs = [
 container_port = 80
 
 desired_count = 1
+
+alert_email = "mailtosinsha@gmail.com"
