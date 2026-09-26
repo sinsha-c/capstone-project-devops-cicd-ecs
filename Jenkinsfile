@@ -139,7 +139,7 @@ pipeline {
                       --username AWS \
                       --password-stdin "${ECR_REPOSITORY}"
 
-                    echo "Pushing image: ${IMAGE_URI}"
+                    echo "**** Pushing image: ${IMAGE_URI} ****"
 
                     docker push "${IMAGE_URI}"
                 '''
@@ -243,10 +243,48 @@ pipeline {
                       --services "${ECS_SERVICE}" \
                       --region "${AWS_REGION}"
 
-                    echo "ECS deployment completed successfully."
+                    echo "**** ECS deployment completed successfully. ****"
                 '''
             }
         }
+
+        stage('Application Verification') {
+            steps {
+                script {
+                    env.ALB_DNS_NAME = sh(
+                        script: '''
+                            aws elbv2 describe-load-balancers \
+                              --region "${AWS_REGION}" \
+                              --query 'LoadBalancers[?Type==`application`].DNSName' \
+                              --output text
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "ALB DNS: ${env.ALB_DNS_NAME}"
+
+                    sh '''
+                        echo "Testing application..."
+
+                        curl --fail --silent --show-error \
+                          --max-time 10 \
+                          "http://${ALB_DNS_NAME}"
+
+                        echo ""
+                        echo "Application HTTP check passed."
+                    '''
+
+                    echo ""
+                    echo "=============================================="
+                    echo "APPLICATION DEPLOYMENT SUCCESSFUL"
+                    echo "=============================================="
+                    echo "Application URL:"
+                    echo "http://${env.ALB_DNS_NAME}"
+                    echo "=============================================="
+                }
+            }
+        }
+
     }
 
     post {

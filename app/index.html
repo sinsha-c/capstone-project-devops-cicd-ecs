@@ -5,19 +5,63 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>DevOps Capstone</title>
   <style>
-    body{font-family:Arial,sans-serif;background:#f4f7fb;margin:0}
-    main{max-width:720px;margin:80px auto;background:white;padding:40px;border-radius:16px;
-         box-shadow:0 8px 30px rgba(0,0,0,.08)}
-    h1{margin-top:0}.tag{display:inline-block;padding:7px 10px;margin:4px;
-    background:#e5e7eb;border-radius:16px}
+    *{box-sizing:border-box}
+    body{font-family:'Segoe UI',Arial,sans-serif;background:#ffffff;margin:0;
+         min-height:100vh;display:flex;align-items:center;justify-content:center;
+         color:#1f2937}
+
+    main{max-width:600px;width:90%;padding:20px}
+
+    .logo{display:block;margin:0 auto 24px}
+
+    h1{text-align:center;font-size:26px;font-weight:600;margin:0 0 6px}
+    .subtitle{text-align:center;color:#6b7280;font-size:15px;margin:0 0 32px}
+
+    hr{border:none;border-top:1px solid #e5e7eb;margin:0 0 32px}
+
+    p.desc{text-align:center;color:#374151;line-height:1.7;font-size:15px;
+           max-width:480px;margin:0 auto 36px}
+
+    .stack{display:flex;justify-content:center;flex-wrap:wrap;gap:10px}
+    .tag{font-size:13px;font-weight:500;padding:8px 16px;border-radius:6px;
+         background:#f3f4f6;color:#374151}
+
+    footer{text-align:center;margin-top:40px;font-size:12px;color:#9ca3af}
   </style>
 </head>
 <body>
 <main>
+  <svg class="logo" width="70" height="35" viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg">
+    <path d="M 50,50
+             C 50,30 65,20 80,30
+             C 95,40 105,60 120,70
+             C 135,80 150,70 150,50
+             C 150,30 135,20 120,30
+             C 105,40 95,60 80,70
+             C 65,80 50,70 50,50 Z"
+          fill="none" stroke="#111827" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+
   <h1>DevOps Capstone Web Server</h1>
-  <p>A simple web application deployed using Docker, Jenkins, Terraform, Ansible and Amazon ECS.</p>
-  <span class="tag">AWS</span><span class="tag">Docker</span>
-  <span class="tag">Jenkins</span><span class="tag">Terraform</span><span class="tag">Ansible</span>
+  <p class="subtitle">Automated CI/CD Pipeline on AWS</p>
+
+  <hr>
+
+  <p class="desc">
+    A simple web application deployed using Docker, Jenkins, Terraform,
+    Ansible and Amazon ECS — demonstrating an end-to-end automated
+    infrastructure and deployment workflow.
+  </p>
+
+  <div class="stack">
+    <span class="tag">AWS</span>
+    <span class="tag">Docker</span>
+    <span class="tag">Jenkins</span>
+    <span class="tag">Terraform</span>
+    <span class="tag">Ansible</span>
+  </div>
+
+  <footer>Deployed via CI/CD Pipeline</footer>
 </main>
 </body>
 </html>
