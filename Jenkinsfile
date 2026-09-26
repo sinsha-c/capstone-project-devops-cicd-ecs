@@ -2,12 +2,15 @@ pipeline {
 
     agent any
 
+    environment {
+        AWS_REGION = "${AWS_REGION}"
+    }
+
     stages {
 
         stage('Checkout') {
             steps {
-                git branch: 'main',
-                    url: "${REPO_URL}"
+                checkout scm
 
                 script {
                     env.IMAGE_TAG = sh(
@@ -20,38 +23,19 @@ pipeline {
             }
         }
 
-        stage('Test Jenkins Environment') {
+        stage('Discover Infrastructure') {
             steps {
-                sh '''
-                    echo "================================"
-                    echo "Jenkins Environment Test"
-                    echo "================================"
+                script {
 
-                    echo "Repository : ${REPO_URL}"
-                    echo "AWS Region : ${AWS_REGION}"
-                    echo "Git Commit : ${IMAGE_TAG}"
+                    echo 'Reading existing Terraform outputs...'
 
-                    echo ""
-                    echo "AWS Identity:"
-                    aws sts get-caller-identity
-                '''
-            }
-        }
+                    dir('terraform') {
 
-        stage('Test Terraform Outputs') {
-            steps {
-                dir('terraform') {
-                    sh '''
-                        echo "Initializing Terraform..."
+                        // Connect to existing S3 Terraform state
+                        sh '''
+                            terraform init -input=false
+                        '''
 
-                        terraform init -input=false
-
-                        echo ""
-                        echo "Terraform Outputs:"
-                        terraform output
-                    '''
-
-                    script {
                         env.ECR_REPOSITORY = sh(
                             script: 'terraform output -raw ecr_repository_url',
                             returnStdout: true
@@ -72,53 +56,39 @@ pipeline {
                             returnStdout: true
                         ).trim()
                     }
+
+                    echo "ECR Repository : ${env.ECR_REPOSITORY}"
+                    echo "ECS Cluster    : ${env.ECS_CLUSTER}"
+                    echo "ECS Service    : ${env.ECS_SERVICE}"
+                    echo "Task Definition: ${env.TASK_DEFINITION}"
+
+                    /*
+                     * Container name is obtained directly from
+                     * the existing ECS task definition.
+                     */
+                    env.CONTAINER_NAME = sh(
+                        script: '''
+                            aws ecs describe-task-definition \
+                              --task-definition "${TASK_DEFINITION}" \
+                              --region "${AWS_REGION}" \
+                              --query 'taskDefinition.containerDefinitions[].name' \
+                              --output text
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    env.IMAGE_URI = "${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
+
+                    echo "Container Name : ${env.CONTAINER_NAME}"
+                    echo "Image URI      : ${env.IMAGE_URI}"
                 }
-
-                echo "ECR Repository : ${env.ECR_REPOSITORY}"
-                echo "ECS Cluster    : ${env.ECS_CLUSTER}"
-                echo "ECS Service    : ${env.ECS_SERVICE}"
-                echo "Task Definition: ${env.TASK_DEFINITION}"
             }
         }
 
-        stage('Test ECS Access') {
-            steps {
-                sh '''
-                    echo "Testing ECS access..."
-
-                    aws ecs describe-task-definition \
-                      --task-definition "${TASK_DEFINITION}" \
-                      --region "${AWS_REGION}" \
-                      --query 'taskDefinition.containerDefinitions[].name' \
-                      --output table
-                '''
-            }
-        }
-
-        stage('Test Docker') {
-            steps {
-                sh '''
-                    echo "Testing Docker access..."
-
-                    docker --version
-                    docker ps
-                '''
-            }
-        }
-
-        stage('Test Trivy') {
-            steps {
-                sh '''
-                    echo "Testing Trivy..."
-
-                    trivy --version
-                '''
-            }
-        }
-
-        stage('Test SonarQube') {
+        stage('SonarQube Analysis') {
             steps {
                 script {
+
                     def scannerHome = tool 'sonar-scanner'
 
                     withSonarQubeEnv('SonarQube') {
@@ -136,15 +106,159 @@ pipeline {
             }
         }
 
-        stage('Test Complete') {
+        stage('Docker Build') {
             steps {
-                echo '================================'
-                echo 'Jenkins configuration test PASSED'
-                echo 'No Docker image was built.'
-                echo 'No image was pushed to ECR.'
-                echo 'No ECS deployment was performed.'
-                echo '================================'
+                sh '''
+                    docker build \
+                      -t "${IMAGE_URI}" \
+                      ./app
+                '''
             }
+        }
+
+        stage('Trivy Scan') {
+            steps {
+                sh '''
+                    trivy image \
+                      --exit-code 1 \
+                      --severity HIGH,CRITICAL \
+                      --ignore-unfixed \
+                      "${IMAGE_URI}"
+                '''
+            }
+        }
+
+        stage('Push Image to ECR') {
+            steps {
+                sh '''
+                    echo "Logging in to Amazon ECR..."
+
+                    aws ecr get-login-password \
+                      --region "${AWS_REGION}" |
+                    docker login \
+                      --username AWS \
+                      --password-stdin "${ECR_REPOSITORY}"
+
+                    echo "Pushing image: ${IMAGE_URI}"
+
+                    docker push "${IMAGE_URI}"
+                '''
+            }
+        }
+
+        stage('Create ECS Task Definition') {
+            steps {
+                sh '''
+                    echo "Getting current ECS task definition..."
+
+                    aws ecs describe-task-definition \
+                      --task-definition "${TASK_DEFINITION}" \
+                      --region "${AWS_REGION}" \
+                      --query 'taskDefinition' \
+                      --output json > task-definition.json
+
+
+                    echo "Removing ECS-generated metadata..."
+
+                    jq '
+                      del(
+                        .taskDefinitionArn,
+                        .revision,
+                        .status,
+                        .requiresAttributes,
+                        .compatibilities,
+                        .registeredAt,
+                        .registeredBy
+                      )
+                    ' task-definition.json \
+                    > task-definition-clean.json
+
+
+                    echo "Updating container image..."
+
+                    jq \
+                      --arg CONTAINER_NAME "${CONTAINER_NAME}" \
+                      --arg IMAGE_URI "${IMAGE_URI}" \
+                      '
+                      (.containerDefinitions[]
+                        | select(.name == $CONTAINER_NAME)
+                        | .image) = $IMAGE_URI
+                      ' \
+                      task-definition-clean.json \
+                      > new-task-definition.json
+
+
+                    echo "New task definition prepared."
+
+                    cat new-task-definition.json
+                '''
+            }
+        }
+
+        stage('Register New Task Definition') {
+            steps {
+                script {
+
+                    echo 'Registering new ECS task definition...'
+
+                    env.NEW_TASK_DEFINITION = sh(
+                        script: '''
+                            aws ecs register-task-definition \
+                              --region "${AWS_REGION}" \
+                              --cli-input-json file://new-task-definition.json \
+                              --query 'taskDefinition.taskDefinitionArn' \
+                              --output text
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "New Task Definition: ${env.NEW_TASK_DEFINITION}"
+                }
+            }
+        }
+
+        stage('Deploy to ECS') {
+            steps {
+                sh '''
+                    echo "Updating ECS service..."
+
+                    aws ecs update-service \
+                      --cluster "${ECS_CLUSTER}" \
+                      --service "${ECS_SERVICE}" \
+                      --task-definition "${NEW_TASK_DEFINITION}" \
+                      --region "${AWS_REGION}"
+
+                    echo "ECS service update initiated."
+                '''
+            }
+        }
+
+        stage('Deployment Verification') {
+            steps {
+                sh '''
+                    echo "Waiting for ECS service to become stable..."
+
+                    aws ecs wait services-stable \
+                      --cluster "${ECS_CLUSTER}" \
+                      --services "${ECS_SERVICE}" \
+                      --region "${AWS_REGION}"
+
+                    echo "ECS deployment completed successfully."
+                '''
+            }
+        }
+    }
+
+    post {
+
+        always {
+            sh '''
+                rm -f task-definition.json
+                rm -f task-definition-clean.json
+                rm -f new-task-definition.json
+            '''
+
+            echo 'Application pipeline finished.'
         }
     }
 }

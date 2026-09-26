@@ -1,264 +1,112 @@
-pipeline {
+# DevOps Capstone --- Terraform + Ansible + Jenkins + ECS Fargate
 
-    agent any
+A practical AWS DevOps capstone demonstrating **Infrastructure as Code,
+configuration management, CI/CD, container security, monitoring, and
+application deployment**.
 
-    environment {
-        AWS_REGION = "${AWS_REGION}"
-    }
+The architecture separates responsibilities clearly:
 
-    stages {
+  Tool                     Responsibility
+  ------------------------ ------------------------------------------------
+  **Terraform**            AWS infrastructure provisioning
+  **Ansible**              Software installation and server configuration
+  **Jenkins**              Pipeline orchestration
+  **Docker**               Application containerization
+  **Trivy**                Filesystem/container security scanning
+  **SonarQube**            Code quality analysis
+  **Prometheus**           Metrics collection
+  **Grafana**              Monitoring dashboards
+  **Amazon ECR**           Container image registry
+  **Amazon ECS Fargate**   Application runtime
+  **Amazon S3**            Terraform remote state
 
-        stage('Checkout') {
-            steps {
-                checkout scm
+> **Architecture decision:** For the learning capstone, use one manually
+> bootstrapped DevOps EC2 instance. Keep Jenkins itself outside the
+> Terraform-managed infrastructure initially, so Jenkins does not try to
+> recreate the machine on which it is running.
 
-                script {
-                    env.IMAGE_TAG = sh(
-                        script: 'git rev-parse --short=12 HEAD',
-                        returnStdout: true
-                    ).trim()
+------------------------------------------------------------------------
 
-                    echo "Git Commit: ${env.IMAGE_TAG}"
-                }
-            }
-        }
+## 1. Final Architecture
 
-        stage('Discover Infrastructure') {
-            steps {
-                script {
-
-                    echo 'Reading existing Terraform outputs...'
-
-                    dir('terraform') {
-
-                        // Connect to existing S3 Terraform state
-                        sh '''
-                            terraform init -input=false
-                        '''
-
-                        env.ECR_REPOSITORY = sh(
-                            script: 'terraform output -raw ecr_repository_url',
-                            returnStdout: true
-                        ).trim()
-
-                        env.ECS_CLUSTER = sh(
-                            script: 'terraform output -raw ecs_cluster_name',
-                            returnStdout: true
-                        ).trim()
-
-                        env.ECS_SERVICE = sh(
-                            script: 'terraform output -raw ecs_service_name',
-                            returnStdout: true
-                        ).trim()
-
-                        env.TASK_DEFINITION = sh(
-                            script: 'terraform output -raw task_definition_arn',
-                            returnStdout: true
-                        ).trim()
-                    }
-
-                    echo "ECR Repository : ${env.ECR_REPOSITORY}"
-                    echo "ECS Cluster    : ${env.ECS_CLUSTER}"
-                    echo "ECS Service    : ${env.ECS_SERVICE}"
-                    echo "Task Definition: ${env.TASK_DEFINITION}"
-
-                    /*
-                     * Container name is obtained directly from
-                     * the existing ECS task definition.
-                     */
-                    env.CONTAINER_NAME = sh(
-                        script: '''
-                            aws ecs describe-task-definition \
-                              --task-definition "${TASK_DEFINITION}" \
-                              --region "${AWS_REGION}" \
-                              --query 'taskDefinition.containerDefinitions[].name' \
-                              --output text
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-                    env.IMAGE_URI = "${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
-
-                    echo "Container Name : ${env.CONTAINER_NAME}"
-                    echo "Image URI      : ${env.IMAGE_URI}"
-                }
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            steps {
-                script {
-
-                    def scannerHome = tool 'sonar-scanner'
-
-                    withSonarQubeEnv('SonarQube') {
-                        sh "${scannerHome}/bin/sonar-scanner"
-                    }
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
-
-        stage('Docker Build') {
-            steps {
-                sh '''
-                    docker build \
-                      -t "${IMAGE_URI}" \
-                      ./app
-                '''
-            }
-        }
-
-        stage('Trivy Scan') {
-            steps {
-                sh '''
-                    trivy image \
-                      --exit-code 1 \
-                      --severity HIGH,CRITICAL \
-                      --ignore-unfixed \
-                      "${IMAGE_URI}"
-                '''
-            }
-        }
-
-        stage('Push Image to ECR') {
-            steps {
-                sh '''
-                    echo "Logging in to Amazon ECR..."
-
-                    aws ecr get-login-password \
-                      --region "${AWS_REGION}" |
-                    docker login \
-                      --username AWS \
-                      --password-stdin "${ECR_REPOSITORY}"
-
-                    echo "Pushing image: ${IMAGE_URI}"
-
-                    docker push "${IMAGE_URI}"
-                '''
-            }
-        }
-
-        stage('Create ECS Task Definition') {
-            steps {
-                sh '''
-                    echo "Getting current ECS task definition..."
-
-                    aws ecs describe-task-definition \
-                      --task-definition "${TASK_DEFINITION}" \
-                      --region "${AWS_REGION}" \
-                      --query 'taskDefinition' \
-                      --output json > task-definition.json
+``` text
+                                  GITHUB
+                                     |
+                     +---------------+---------------+
+                     |                               |
+                     v                               v
+          INFRASTRUCTURE PIPELINE          APPLICATION PIPELINE
+                     |                               |
+                     v                               v
+                 TERRAFORM                         JENKINS
+                     |                               |
+                     v                    +----------+----------+
+              AWS INFRASTRUCTURE          |          |          |
+                     |                  SonarQube  Docker     Trivy
+                     |                               |
+                     |                               v
+                     |                              ECR
+                     |                               |
+                     v                               v
+              +-------------+                    ECS/Fargate
+              |     VPC     |                       |
+              |             |                       |
+              | Public      |                       |
+              | Subnets     |                       |
+              |   ALB       |                       |
+              |             |                       |
+              | Private     |                       |
+              | Subnets     |                       |
+              |   ECS       |                       |
+              +-------------+                       |
+                                                    |
+                                                    v
+                                             Web Application
 
 
-                    echo "Removing ECS-generated metadata..."
-
-                    jq '
-                      del(
-                        .taskDefinitionArn,
-                        .revision,
-                        .status,
-                        .requiresAttributes,
-                        .compatibilities,
-                        .registeredAt,
-                        .registeredBy
-                      )
-                    ' task-definition.json \
-                    > task-definition-clean.json
-
-
-                    echo "Updating container image..."
-
-                    jq \
-                      --arg CONTAINER_NAME "${CONTAINER_NAME}" \
-                      --arg IMAGE_URI "${IMAGE_URI}" \
-                      '
-                      (.containerDefinitions[]
-                        | select(.name == $CONTAINER_NAME)
-                        | .image) = $IMAGE_URI
-                      ' \
-                      task-definition-clean.json \
-                      > new-task-definition.json
+                    DEVOPS EC2
+                 Ubuntu / t3.large
+                       |
+       +---------------+----------------+
+       |               |                |
+     Jenkins        Terraform         Ansible
+       |                                |
+       |                    +-----------+-----------+
+       |                    |           |           |
+       |                SonarQube   Prometheus   Grafana
+       |                                |
+       |                                v
+       |                           Monitoring
+       |
+       +---- Docker / Trivy / AWS CLI
 
 
-                    echo "New task definition prepared."
+                         S3
+                          |
+                          v
+                  Terraform State
+```
 
-                    cat new-task-definition.json
-                '''
-            }
-        }
+### Traffic flow
 
-        stage('Register New Task Definition') {
-            steps {
-                script {
+``` text
+Internet
+   |
+   v
+ALB
+(Public Subnet)
+   |
+   | HTTP/HTTPS
+   v
+ECS Fargate
+(Private Subnet)
+   |
+   v
+Application
+```
 
-                    echo 'Registering new ECS task definition...'
+The ECS security group allows application traffic **from the ALB
+security group**, rather than allowing the entire internet to reach the
+ECS tasks directly.
 
-                    env.NEW_TASK_DEFINITION = sh(
-                        script: '''
-                            aws ecs register-task-definition \
-                              --region "${AWS_REGION}" \
-                              --cli-input-json file://new-task-definition.json \
-                              --query 'taskDefinition.taskDefinitionArn' \
-                              --output text
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-                    echo "New Task Definition: ${env.NEW_TASK_DEFINITION}"
-                }
-            }
-        }
-
-        stage('Deploy to ECS') {
-            steps {
-                sh '''
-                    echo "Updating ECS service..."
-
-                    aws ecs update-service \
-                      --cluster "${ECS_CLUSTER}" \
-                      --service "${ECS_SERVICE}" \
-                      --task-definition "${NEW_TASK_DEFINITION}" \
-                      --region "${AWS_REGION}"
-
-                    echo "ECS service update initiated."
-                '''
-            }
-        }
-
-        stage('Deployment Verification') {
-            steps {
-                sh '''
-                    echo "Waiting for ECS service to become stable..."
-
-                    aws ecs wait services-stable \
-                      --cluster "${ECS_CLUSTER}" \
-                      --services "${ECS_SERVICE}" \
-                      --region "${AWS_REGION}"
-
-                    echo "ECS deployment completed successfully."
-                '''
-            }
-        }
-    }
-
-    post {
-
-        always {
-            sh '''
-                rm -f task-definition.json
-                rm -f task-definition-clean.json
-                rm -f new-task-definition.json
-            '''
-
-            echo 'Application pipeline finished.'
-        }
-    }
-}
+------------------------------------------------------------------------
