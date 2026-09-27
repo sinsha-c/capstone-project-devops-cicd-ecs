@@ -1,0 +1,250 @@
+pipeline {
+
+    agent any
+
+    parameters {
+        string(
+            name: 'PROJECT_NAME',
+            defaultValue: 'capstone-devops-cicd',
+            description: 'Terraform project name for the application infrastructure'
+        )
+    }
+
+    environment {
+        AWS_REGION = '${AWS_REGION}'
+    }
+
+    stages {
+
+        stage('Validate Project') {
+            steps {
+                script {
+
+                    echo "=============================================="
+                    echo "ROLLBACK REQUEST"
+                    echo "=============================================="
+                    echo "Project Name : ${params.PROJECT_NAME}"
+                    echo "AWS Region   : ${env.AWS_REGION}"
+                    echo "=============================================="
+
+                    if (!params.PROJECT_NAME?.trim()) {
+                        error("PROJECT_NAME cannot be empty.")
+                    }
+                }
+            }
+        }
+
+        stage('Checkout Infrastructure') {
+            steps {
+
+                echo "Checking out Terraform infrastructure..."
+
+                checkout scm
+
+                sh '''
+                    echo "Repository checkout completed."
+                    echo "Terraform directory:"
+                    ls -la terraform
+                '''
+            }
+        }
+
+        stage('Discover Infrastructure') {
+            steps {
+                script {
+
+                    dir('terraform') {
+
+                        sh '''
+                            terraform init -input=false
+                        '''
+
+                        env.ALB_LISTENER_ARN = sh(
+                            script: 'terraform output -raw alb_listener_arn',
+                            returnStdout: true
+                        ).trim()
+
+                        env.BLUE_TARGET_GROUP = sh(
+                            script: 'terraform output -raw blue_target_group_arn',
+                            returnStdout: true
+                        ).trim()
+
+                        env.GREEN_TARGET_GROUP = sh(
+                            script: 'terraform output -raw green_target_group_arn',
+                            returnStdout: true
+                        ).trim()
+
+                        env.ALB_DNS_NAME = sh(
+                            script: 'terraform output -raw alb_dns_name',
+                            returnStdout: true
+                        ).trim()
+                    }
+
+                    echo "=============================================="
+                    echo "Infrastructure"
+                    echo "=============================================="
+                    echo "Project            : ${params.PROJECT_NAME}"
+                    echo "ALB DNS            : ${env.ALB_DNS_NAME}"
+                    echo "Production Listener: ${env.ALB_LISTENER_ARN}"
+                    echo "Blue Target Group  : ${env.BLUE_TARGET_GROUP}"
+                    echo "Green Target Group : ${env.GREEN_TARGET_GROUP}"
+                    echo "=============================================="
+                }
+            }
+        }
+
+        stage('Detect Current Production') {
+            steps {
+                script {
+
+                    env.CURRENT_TARGET_GROUP = sh(
+                        script: '''
+                            aws elbv2 describe-listeners \
+                                --listener-arn "${ALB_LISTENER_ARN}" \
+                                --region "${AWS_REGION}" \
+                                --query 'Listeners[0].DefaultActions[0].TargetGroupArn' \
+                                --output text
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "=============================================="
+                    echo "CURRENT PRODUCTION"
+                    echo "=============================================="
+                    echo "Current Target Group: ${env.CURRENT_TARGET_GROUP}"
+
+                    if (env.CURRENT_TARGET_GROUP == env.BLUE_TARGET_GROUP) {
+
+                        env.CURRENT_COLOR = 'BLUE'
+                        env.ROLLBACK_COLOR = 'GREEN'
+                        env.ROLLBACK_TARGET_GROUP = env.GREEN_TARGET_GROUP
+
+                    } else if (env.CURRENT_TARGET_GROUP == env.GREEN_TARGET_GROUP) {
+
+                        env.CURRENT_COLOR = 'GREEN'
+                        env.ROLLBACK_COLOR = 'BLUE'
+                        env.ROLLBACK_TARGET_GROUP = env.BLUE_TARGET_GROUP
+
+                    } else {
+
+                        error(
+                            "Production listener points to an unknown target group: ${env.CURRENT_TARGET_GROUP}"
+                        )
+                    }
+
+                    echo "Current Production : ${env.CURRENT_COLOR}"
+                    echo "Rollback Target    : ${env.ROLLBACK_COLOR}"
+                    echo "=============================================="
+                }
+            }
+        }
+
+        stage('Confirm Rollback Target') {
+            steps {
+
+                echo "=============================================="
+                echo "ROLLBACK PLAN"
+                echo "=============================================="
+                echo "Project            : ${params.PROJECT_NAME}"
+                echo "Current Production : ${env.CURRENT_COLOR}"
+                echo "Rollback Target    : ${env.ROLLBACK_COLOR}"
+                echo "Target Group       : ${env.ROLLBACK_TARGET_GROUP}"
+                echo "=============================================="
+            }
+        }
+
+        stage('Switch Production Traffic') {
+            steps {
+
+                echo "Switching ALB production traffic..."
+
+                sh '''
+                    aws elbv2 modify-listener \
+                        --listener-arn "${ALB_LISTENER_ARN}" \
+                        --default-actions Type=forward,TargetGroupArn="${ROLLBACK_TARGET_GROUP}" \
+                        --region "${AWS_REGION}"
+                '''
+
+                echo "Production traffic switched to ${env.ROLLBACK_COLOR}."
+            }
+        }
+
+        stage('Verify Production Listener') {
+            steps {
+                script {
+
+                    def verifiedTargetGroup = sh(
+                        script: '''
+                            aws elbv2 describe-listeners \
+                                --listener-arn "${ALB_LISTENER_ARN}" \
+                                --region "${AWS_REGION}" \
+                                --query 'Listeners[0].DefaultActions[0].TargetGroupArn' \
+                                --output text
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "=============================================="
+                    echo "VERIFYING ALB"
+                    echo "=============================================="
+                    echo "Expected Target Group: ${env.ROLLBACK_TARGET_GROUP}"
+                    echo "Actual Target Group  : ${verifiedTargetGroup}"
+
+                    if (verifiedTargetGroup != env.ROLLBACK_TARGET_GROUP) {
+                        error("ALB rollback verification failed.")
+                    }
+
+                    echo "ALB listener verification PASSED."
+                }
+            }
+        }
+
+        stage('Application Health Check') {
+            steps {
+
+                echo "Checking application..."
+
+                sh '''
+                    curl \
+                        --fail \
+                        --silent \
+                        --show-error \
+                        --max-time 10 \
+                        "http://${ALB_DNS_NAME}"
+                '''
+
+                echo ""
+                echo "Application health check PASSED."
+            }
+        }
+
+        stage('Rollback Summary') {
+            steps {
+
+                echo "=============================================="
+                echo "BLUE-GREEN ROLLBACK SUCCESSFUL"
+                echo "=============================================="
+                echo "Project            : ${params.PROJECT_NAME}"
+                echo "Previous Production: ${env.CURRENT_COLOR}"
+                echo "New Production     : ${env.ROLLBACK_COLOR}"
+                echo "Application        : Healthy"
+                echo "=============================================="
+            }
+        }
+    }
+
+    post {
+
+        success {
+            echo "Manual rollback completed successfully."
+        }
+
+        failure {
+            echo "Manual rollback failed. Production traffic was not confirmed on the rollback target."
+        }
+
+        always {
+            echo "Rollback pipeline finished."
+        }
+    }
+}
