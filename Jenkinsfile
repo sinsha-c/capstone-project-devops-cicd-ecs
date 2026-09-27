@@ -8,6 +8,9 @@ pipeline {
 
     stages {
 
+        // =========================================================
+        // 1. CHECKOUT
+        // =========================================================
         stage('Checkout') {
             steps {
                 checkout scm
@@ -23,6 +26,10 @@ pipeline {
             }
         }
 
+
+        // =========================================================
+        // 2. DISCOVER INFRASTRUCTURE
+        // =========================================================
         stage('Discover Infrastructure') {
             steps {
                 script {
@@ -31,7 +38,8 @@ pipeline {
 
                     dir('terraform') {
 
-                        // Connect to existing S3 Terraform state
+                        // Read-only Terraform access.
+                        // This pipeline never runs terraform apply.
                         sh '''
                             terraform init -input=false
                         '''
@@ -46,8 +54,13 @@ pipeline {
                             returnStdout: true
                         ).trim()
 
-                        env.ECS_SERVICE = sh(
-                            script: 'terraform output -raw ecs_service_name',
+                        env.ECS_BLUE_SERVICE = sh(
+                            script: 'terraform output -raw ecs_blue_service_name',
+                            returnStdout: true
+                        ).trim()
+
+                        env.ECS_GREEN_SERVICE = sh(
+                            script: 'terraform output -raw ecs_green_service_name',
                             returnStdout: true
                         ).trim()
 
@@ -55,17 +68,72 @@ pipeline {
                             script: 'terraform output -raw task_definition_arn',
                             returnStdout: true
                         ).trim()
+
+                        env.ALB_ARN = sh(
+                            script: 'terraform output -raw alb_arn',
+                            returnStdout: true
+                        ).trim()
+
+                        env.ALB_LISTENER_ARN = sh(
+                            script: 'terraform output -raw alb_listener_arn',
+                            returnStdout: true
+                        ).trim()
+
+                        env.TEST_LISTENER_ARN = sh(
+                            script: 'terraform output -raw test_listener_arn',
+                            returnStdout: true
+                        ).trim()
+
+                        env.BLUE_TARGET_GROUP = sh(
+                            script: 'terraform output -raw blue_target_group_arn',
+                            returnStdout: true
+                        ).trim()
+
+                        env.GREEN_TARGET_GROUP = sh(
+                            script: 'terraform output -raw green_target_group_arn',
+                            returnStdout: true
+                        ).trim()
                     }
 
-                    echo "ECR Repository : ${env.ECR_REPOSITORY}"
-                    echo "ECS Cluster    : ${env.ECS_CLUSTER}"
-                    echo "ECS Service    : ${env.ECS_SERVICE}"
-                    echo "Task Definition: ${env.TASK_DEFINITION}"
 
-                    /*
-                     * Container name is obtained directly from
-                     * the existing ECS task definition.
-                     */
+                    // -------------------------------------------------
+                    // Get ALB DNS name
+                    // -------------------------------------------------
+                    env.ALB_DNS_NAME = sh(
+                        script: '''
+                            aws elbv2 describe-load-balancers \
+                              --load-balancer-arns "${ALB_ARN}" \
+                              --region "${AWS_REGION}" \
+                              --query 'LoadBalancers[0].DNSName' \
+                              --output text
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+
+                    // -------------------------------------------------
+                    // Display infrastructure information
+                    // -------------------------------------------------
+                    echo "=============================================="
+                    echo "Infrastructure"
+                    echo "=============================================="
+                    echo "ECR Repository      : ${env.ECR_REPOSITORY}"
+                    echo "ECS Cluster         : ${env.ECS_CLUSTER}"
+                    echo "Blue Service        : ${env.ECS_BLUE_SERVICE}"
+                    echo "Green Service       : ${env.ECS_GREEN_SERVICE}"
+                    echo "Task Definition     : ${env.TASK_DEFINITION}"
+                    echo "ALB ARN             : ${env.ALB_ARN}"
+                    echo "ALB DNS             : ${env.ALB_DNS_NAME}"
+                    echo "Production Listener : ${env.ALB_LISTENER_ARN}"
+                    echo "Test Listener       : ${env.TEST_LISTENER_ARN}"
+                    echo "Blue Target Group   : ${env.BLUE_TARGET_GROUP}"
+                    echo "Green Target Group  : ${env.GREEN_TARGET_GROUP}"
+                    echo "=============================================="
+
+
+                    // -------------------------------------------------
+                    // Get container name from current task definition
+                    // -------------------------------------------------
                     env.CONTAINER_NAME = sh(
                         script: '''
                             aws ecs describe-task-definition \
@@ -77,7 +145,9 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
+
                     env.IMAGE_URI = "${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
+
 
                     echo "Container Name : ${env.CONTAINER_NAME}"
                     echo "Image URI      : ${env.IMAGE_URI}"
@@ -85,6 +155,79 @@ pipeline {
             }
         }
 
+
+        // =========================================================
+        // 3. DETECT ACTIVE COLOR
+        // =========================================================
+        stage('Detect Active Color') {
+            steps {
+                script {
+
+                    echo 'Detecting active production color...'
+
+                    def activeTargetGroup = sh(
+                        script: '''
+                            aws elbv2 describe-listeners \
+                              --listener-arn "${ALB_LISTENER_ARN}" \
+                              --region "${AWS_REGION}" \
+                              --query 'Listeners[0].DefaultActions[0].TargetGroupArn' \
+                              --output text
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+
+                    echo "Active Target Group: ${activeTargetGroup}"
+
+
+                    if (activeTargetGroup == env.BLUE_TARGET_GROUP) {
+
+                        env.ACTIVE_COLOR = 'blue'
+                        env.DEPLOY_COLOR = 'green'
+
+                        env.ACTIVE_SERVICE = env.ECS_BLUE_SERVICE
+                        env.DEPLOY_SERVICE = env.ECS_GREEN_SERVICE
+
+                        env.ACTIVE_TARGET_GROUP = env.BLUE_TARGET_GROUP
+                        env.DEPLOY_TARGET_GROUP = env.GREEN_TARGET_GROUP
+
+                    }
+                    else if (activeTargetGroup == env.GREEN_TARGET_GROUP) {
+
+                        env.ACTIVE_COLOR = 'green'
+                        env.DEPLOY_COLOR = 'blue'
+
+                        env.ACTIVE_SERVICE = env.ECS_GREEN_SERVICE
+                        env.DEPLOY_SERVICE = env.ECS_BLUE_SERVICE
+
+                        env.ACTIVE_TARGET_GROUP = env.GREEN_TARGET_GROUP
+                        env.DEPLOY_TARGET_GROUP = env.BLUE_TARGET_GROUP
+
+                    }
+                    else {
+
+                        error(
+                            "ALB production listener is pointing to an unknown target group: ${activeTargetGroup}"
+                        )
+                    }
+
+
+                    echo "=============================================="
+                    echo "Blue-Green Deployment Plan"
+                    echo "=============================================="
+                    echo "Active Color       : ${env.ACTIVE_COLOR}"
+                    echo "Deployment Color   : ${env.DEPLOY_COLOR}"
+                    echo "Active Service     : ${env.ACTIVE_SERVICE}"
+                    echo "Deployment Service : ${env.DEPLOY_SERVICE}"
+                    echo "=============================================="
+                }
+            }
+        }
+
+
+        // =========================================================
+        // 4. SONARQUBE ANALYSIS
+        // =========================================================
         stage('SonarQube Analysis') {
             steps {
                 script {
@@ -98,17 +241,29 @@ pipeline {
             }
         }
 
+
+        // =========================================================
+        // 5. QUALITY GATE
+        // =========================================================
         stage('Quality Gate') {
             steps {
+
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
                 }
             }
         }
 
+
+        // =========================================================
+        // 6. DOCKER BUILD
+        // =========================================================
         stage('Docker Build') {
             steps {
+
                 sh '''
+                    echo "Building Docker image..."
+
                     docker build \
                       -t "${IMAGE_URI}" \
                       ./app
@@ -116,9 +271,16 @@ pipeline {
             }
         }
 
+
+        // =========================================================
+        // 7. TRIVY SCAN
+        // =========================================================
         stage('Trivy Scan') {
             steps {
+
                 sh '''
+                    echo "Scanning Docker image with Trivy..."
+
                     trivy image \
                       --exit-code 1 \
                       --severity HIGH,CRITICAL \
@@ -128,8 +290,13 @@ pipeline {
             }
         }
 
+
+        // =========================================================
+        // 8. PUSH IMAGE TO ECR
+        // =========================================================
         stage('Push Image to ECR') {
             steps {
+
                 sh '''
                     echo "Logging in to Amazon ECR..."
 
@@ -139,15 +306,20 @@ pipeline {
                       --username AWS \
                       --password-stdin "${ECR_REPOSITORY}"
 
-                    echo "**** Pushing image: ${IMAGE_URI} ****"
+                    echo "Pushing image: ${IMAGE_URI}"
 
                     docker push "${IMAGE_URI}"
                 '''
             }
         }
 
+
+        // =========================================================
+        // 9. CREATE NEW ECS TASK DEFINITION
+        // =========================================================
         stage('Create ECS Task Definition') {
             steps {
+
                 sh '''
                     echo "Getting current ECS task definition..."
 
@@ -189,14 +361,17 @@ pipeline {
 
 
                     echo "New task definition prepared."
-
-                    cat new-task-definition.json
                 '''
             }
         }
 
+
+        // =========================================================
+        // 10. REGISTER NEW TASK DEFINITION
+        // =========================================================
         stage('Register New Task Definition') {
             steps {
+
                 script {
 
                     echo 'Registering new ECS task definition...'
@@ -212,84 +387,224 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
+
                     echo "New Task Definition: ${env.NEW_TASK_DEFINITION}"
                 }
             }
         }
 
-        stage('Deploy to ECS') {
+
+        // =========================================================
+        // 11. DEPLOY TO INACTIVE COLOR
+        // =========================================================
+        stage('Deploy to Inactive Color') {
             steps {
+
                 sh '''
-                    echo "Updating ECS service..."
+                    echo "=============================================="
+                    echo "Deploying new version to ${DEPLOY_COLOR}"
+                    echo "=============================================="
 
                     aws ecs update-service \
                       --cluster "${ECS_CLUSTER}" \
-                      --service "${ECS_SERVICE}" \
+                      --service "${DEPLOY_SERVICE}" \
                       --task-definition "${NEW_TASK_DEFINITION}" \
+                      --desired-count 1 \
                       --region "${AWS_REGION}"
 
-                    echo "ECS service update initiated."
+                    echo "Deployment started."
                 '''
             }
         }
 
-        stage('Deployment Verification') {
+
+        // =========================================================
+        // 12. WAIT FOR ECS STABILITY
+        // =========================================================
+        stage('Wait for Inactive Service') {
             steps {
+
                 sh '''
-                    echo "Waiting for ECS service to become stable..."
+                    echo "Waiting for ${DEPLOY_COLOR} ECS service to become stable..."
 
                     aws ecs wait services-stable \
                       --cluster "${ECS_CLUSTER}" \
-                      --services "${ECS_SERVICE}" \
+                      --services "${DEPLOY_SERVICE}" \
                       --region "${AWS_REGION}"
 
-                    echo "**** ECS deployment completed successfully. ****"
+                    echo "${DEPLOY_COLOR} ECS service is stable."
                 '''
             }
         }
 
-        stage('Application Verification') {
-            steps {
-                script {
-                    env.ALB_DNS_NAME = sh(
-                        script: '''
-                            aws elbv2 describe-load-balancers \
-                              --region "${AWS_REGION}" \
-                              --query 'LoadBalancers[?Type==`application`].DNSName' \
-                              --output text
-                        ''',
-                        returnStdout: true
-                    ).trim()
 
-                    echo "ALB DNS: ${env.ALB_DNS_NAME}"
+        // =========================================================
+        // 13. VERIFY TARGET HEALTH
+        // =========================================================
+        stage('Verify Target Health') {
+            steps {
+
+                script {
+
+                    int maxAttempts = 10
+                    boolean healthy = false
+
+                    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+
+                        def healthState = sh(
+                            script: '''
+                                aws elbv2 describe-target-health \
+                                  --target-group-arn "${DEPLOY_TARGET_GROUP}" \
+                                  --region "${AWS_REGION}" \
+                                  --query 'TargetHealthDescriptions[].TargetHealth.State' \
+                                  --output text
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        echo "Target health attempt ${attempt}: ${healthState}"
+
+
+                        if (healthState.contains('healthy')) {
+                            healthy = true
+                            break
+                        }
+
+
+                        if (attempt < maxAttempts) {
+                            echo "Waiting for ALB target health..."
+                            sleep 15
+                        }
+                    }
+
+
+                    if (!healthy) {
+                        error(
+                            "${env.DEPLOY_COLOR} target group did not become healthy."
+                        )
+                    }
+
+
+                    echo "${env.DEPLOY_COLOR} target group is healthy."
+                }
+            }
+        }
+
+
+        // =========================================================
+        // 14. ROUTE TEST TRAFFIC + TEST NEW COLOR
+        // =========================================================
+        stage('Test New Color') {
+            steps {
+
+                script {
+
+                    echo "=============================================="
+                    echo "Routing test traffic to ${env.DEPLOY_COLOR}"
+                    echo "=============================================="
+
+
+                    // -------------------------------------------------
+                    // Point ALB :8080 to the new/inactive environment
+                    // -------------------------------------------------
+                    sh '''
+                        aws elbv2 modify-listener \
+                          --listener-arn "${TEST_LISTENER_ARN}" \
+                          --default-actions Type=forward,TargetGroupArn="${DEPLOY_TARGET_GROUP}" \
+                          --region "${AWS_REGION}"
+                    '''
+
+
+                    echo "Test listener :8080 now points to ${env.DEPLOY_COLOR}."
+
+
+                    // -------------------------------------------------
+                    // Smoke test the new environment
+                    // -------------------------------------------------
+                    echo "Testing ${env.DEPLOY_COLOR} application..."
 
                     sh '''
-                        echo "Testing application..."
+                        curl --fail --silent --show-error \
+                          --max-time 10 \
+                          "http://${ALB_DNS_NAME}:8080"
 
+                        echo ""
+                        echo "${DEPLOY_COLOR} application test PASSED."
+                    '''
+                }
+            }
+        }
+
+
+        // =========================================================
+        // 15. SWITCH PRODUCTION TRAFFIC
+        // =========================================================
+        stage('Switch Production Traffic') {
+            steps {
+
+                sh '''
+                    echo "=============================================="
+                    echo "Switching production traffic"
+                    echo "=============================================="
+
+                    echo "Old Active Color : ${ACTIVE_COLOR}"
+                    echo "New Active Color : ${DEPLOY_COLOR}"
+
+
+                    aws elbv2 modify-listener \
+                      --listener-arn "${ALB_LISTENER_ARN}" \
+                      --default-actions Type=forward,TargetGroupArn="${DEPLOY_TARGET_GROUP}" \
+                      --region "${AWS_REGION}"
+
+
+                    echo "Production traffic switched to ${DEPLOY_COLOR}."
+                '''
+            }
+        }
+
+
+        // =========================================================
+        // 16. VERIFY PRODUCTION
+        // =========================================================
+        stage('Application Verification') {
+            steps {
+
+                script {
+
+                    echo "Testing production application..."
+
+
+                    sh '''
                         curl --fail --silent --show-error \
                           --max-time 10 \
                           "http://${ALB_DNS_NAME}"
 
                         echo ""
-                        echo "Application HTTP check passed."
+                        echo "Production application HTTP check PASSED."
                     '''
 
-                    echo ""
+
                     echo "=============================================="
-                    echo "APPLICATION DEPLOYMENT SUCCESSFUL"
+                    echo "BLUE-GREEN DEPLOYMENT SUCCESSFUL"
                     echo "=============================================="
+                    echo "Previous Color : ${env.ACTIVE_COLOR}"
+                    echo "New Color      : ${env.DEPLOY_COLOR}"
                     echo "Application URL:"
                     echo "http://${env.ALB_DNS_NAME}"
                     echo "=============================================="
                 }
             }
         }
-
     }
 
+
+    // =============================================================
+    // POST ACTIONS
+    // =============================================================
     post {
 
         always {
+
             sh '''
                 rm -f task-definition.json
                 rm -f task-definition-clean.json
