@@ -393,6 +393,24 @@ pipeline {
             }
         }
 
+        stage('Prepare Test Listener') {
+            steps {
+                sh '''
+                    echo "=============================================="
+                    echo "Preparing test listener"
+                    echo "=============================================="
+
+                    echo "Routing test listener :8080 to ${DEPLOY_COLOR}"
+
+                    aws elbv2 modify-listener \
+                        --listener-arn "${TEST_LISTENER_ARN}" \
+                        --default-actions Type=forward,TargetGroupArn="${DEPLOY_TARGET_GROUP}" \
+                        --region "${AWS_REGION}"
+
+                    echo "Test listener :8080 now points to ${DEPLOY_COLOR}."
+                '''
+            }
+        }
 
         // =========================================================
         // 11. DEPLOY TO INACTIVE COLOR
