@@ -14,6 +14,7 @@ variable "container_port" {
   type = number
 }
 
-variable "jenkins_security_group_id" {
-  type = string
+variable "jenkins_source_ip" {
+  description = "Jenkins source IP allowed to access ALB test listener"
+  type        = string
 }

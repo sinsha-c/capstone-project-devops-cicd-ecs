@@ -16,7 +16,7 @@ private_subnet_cidrs = [
 
 container_port = 80
 
-jenkins_security_group_id = "sg-072a5b59fe85ab226"
+jenkins_source_ip = "15.252.70.189/32"
 
 desired_count = 1
 

@@ -31,8 +31,8 @@ variable "container_port" {
   default = 80
 }
 
-variable "jenkins_security_group_id" {
-  description = "Security group ID of the Jenkins/DevOps EC2 instance"
+variable "jenkins_source_ip" {
+  description = "Public IP address of the Jenkins server allowed to access ALB test listener"
   type        = string
 }
 
