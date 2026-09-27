@@ -11,6 +11,15 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Jenkins -> ALB Green test listener
+  ingress {
+    description     = "Jenkins test traffic"
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [var.jenkins_security_group_id]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0

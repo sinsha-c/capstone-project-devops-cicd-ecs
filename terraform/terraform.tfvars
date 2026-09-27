@@ -16,6 +16,8 @@ private_subnet_cidrs = [
 
 container_port = 80
 
+jenkins_security_group_id = "sg-072a5b59fe85ab226"
+
 desired_count = 1
 
 alert_email = "mailtosinsha@gmail.com"

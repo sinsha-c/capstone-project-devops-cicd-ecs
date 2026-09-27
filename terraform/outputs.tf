@@ -18,12 +18,32 @@ output "ecs_cluster_name" {
   value = module.ecs.cluster_name
 }
 
-output "ecs_service_name" {
-  value = module.ecs.service_name
+output "ecs_blue_service_name" {
+  value = module.ecs.blue_service_name
+}
+
+output "ecs_green_service_name" {
+  value = module.ecs.green_service_name
 }
 
 output "task_definition_arn" {
   value = module.ecs.task_definition_arn
+}
+
+output "alb_listener_arn" {
+  value = module.alb.listener_arn
+}
+
+output "test_listener_arn" {
+  value = module.alb.test_listener_arn
+}
+
+output "blue_target_group_arn" {
+  value = module.alb.blue_target_group_arn
+}
+
+output "green_target_group_arn" {
+  value = module.alb.green_target_group_arn
 }
 
 output "alb_dns_name" {

@@ -5,9 +5,10 @@ resource "aws_lb" "this" {
   security_groups    = [var.alb_sg_id]
   tags               = { Name = "${var.project_name}-alb", Environment = var.environment }
 }
-resource "aws_lb_target_group" "this" {
-  name        = var.target_group_name
-  port        = var.target_group_port
+
+resource "aws_lb_target_group" "blue" {
+  name        = "${var.project_name}-tg"
+  port        = var.container_port
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "ip"
@@ -22,7 +23,39 @@ resource "aws_lb_target_group" "this" {
     healthy_threshold   = 2
     unhealthy_threshold = 3
   }
+
+  tags = {
+    Name        = "${var.project_name}-blue-tg"
+    Environment = var.environment
+    Color       = "blue"
+  }
 }
+
+resource "aws_lb_target_group" "green" {
+  name        = "${var.project_name}-green-tg"
+  port        = var.container_port
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+
+  tags = {
+    Name        = "${var.project_name}-green-tg"
+    Environment = var.environment
+    Color       = "green"
+  }
+}
+
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80
@@ -32,8 +65,19 @@ resource "aws_lb_listener" "http" {
 
     forward {
       target_group {
-        arn = aws_lb_target_group.this.arn
+        arn = aws_lb_target_group.blue.arn
       }
     }
+  }
+}
+
+resource "aws_lb_listener" "test" {
+  load_balancer_arn = aws_lb.this.arn
+  port              = 8080
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.green.arn
   }
 }

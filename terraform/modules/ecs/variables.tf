@@ -18,7 +18,11 @@ variable "ecs_security_group_id" {
   type = string
 }
 
-variable "target_group_arn" {
+variable "blue_target_group_arn" {
+  type = string
+}
+
+variable "green_target_group_arn" {
   type = string
 }
 

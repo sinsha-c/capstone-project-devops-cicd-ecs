@@ -47,7 +47,7 @@ resource "aws_ecs_task_definition" "this" {
   }
 }
 
-resource "aws_ecs_service" "this" {
+resource "aws_ecs_service" "blue" {
   name            = "${var.project_name}-service"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.this.arn
@@ -70,7 +70,7 @@ resource "aws_ecs_service" "this" {
   }
 
   load_balancer {
-    target_group_arn = var.target_group_arn
+    target_group_arn = var.blue_target_group_arn
     container_name   = "${var.project_name}-container"
     container_port   = var.container_port
   }
@@ -80,7 +80,47 @@ resource "aws_ecs_service" "this" {
   ]
 
   tags = {
-    Name        = "${var.project_name}-service"
+    Name        = "${var.project_name}-blue-service"
     Environment = var.environment
+    Color       = "blue"
+  }
+}
+
+resource "aws_ecs_service" "green" {
+  name            = "${var.project_name}-green-service"
+  cluster         = aws_ecs_cluster.this.id
+  task_definition = aws_ecs_task_definition.this.arn
+  desired_count   = 0
+  launch_type     = "FARGATE"
+
+  lifecycle {
+    ignore_changes = [
+      task_definition
+    ]
+  }
+
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+
+  network_configuration {
+    subnets          = var.private_subnets
+    security_groups  = [var.ecs_security_group_id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = var.green_target_group_arn
+    container_name   = "${var.project_name}-container"
+    container_port   = var.container_port
+  }
+
+  depends_on = [
+    aws_ecs_cluster.this
+  ]
+
+  tags = {
+    Name        = "${var.project_name}-green-service"
+    Environment = var.environment
+    Color       = "green"
   }
 }
