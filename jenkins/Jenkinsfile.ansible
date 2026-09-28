@@ -1,0 +1,54 @@
+pipeline {
+
+    agent any
+
+    parameters {
+        string(name: 'SERVER_IP', defaultValue: '', description: 'Target server IP for Ansible inventory')
+        string(name: 'SERVER_USER', defaultValue: 'ec2-user', description: 'SSH user for the target server')
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    url: '${REPO_URL}'
+            }
+        }
+
+        stage('Validate Input') {
+            steps {
+                script {
+                    if (params.SERVER_IP == null || params.SERVER_IP.trim().isEmpty()) {
+                        error("Build failed: SERVER_IP is required and cannot be null or empty.")
+                    }
+                    if (params.SERVER_USER == null || params.SERVER_USER.trim().isEmpty()) {
+                        error("Build failed: SERVER_USER is required and cannot be null or empty.")
+                    }
+                }
+            }
+        }
+
+        stage('Generate Inventory') {
+            steps {
+                sh '''
+                    cd ansible
+                    cat > inventory.ini <<EOF
+[devops_server]
+${SERVER_IP} ansible_user=${SERVER_USER} ansible_ssh_private_key_file=/path/to/key.pem
+EOF
+                    cat inventory.ini
+                    '''
+            }
+        }
+
+        stage('Configure DevOps Server') {
+            steps {
+                sh '''
+                    cd ansible
+                    ansible-playbook -i inventory.ini site.yml
+                    '''
+            }
+        }
+    }
+}
