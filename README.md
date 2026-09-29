@@ -473,8 +473,8 @@ The EC2 instance uses an IAM role rather than storing long-lived AWS access keys
 
 **Security group attached**
 
-> All ports are allowd only from My Ip only.
-> So later you may have to whitelist GitHub webhook IP CIDR to allow GitHub to securely trigger Jenkins builds without exposing Jenkins port 8080 to the entire internet.
+> Administrative and DevOps tool ports are restricted to my public IP address.
+> Whitelist GitHub webhook IP CIDR to allow GitHub to securely trigger Jenkins builds without exposing Jenkins port 8080 to the entire internet.
 
 <img src="screenshots/02-devops-security-group.png" width="80%">
 
@@ -726,6 +726,7 @@ The main playbook coordinates the roles.
   become: true
 
   roles:
+    - docker
     - trivy
     - sonarqube
     - node_exporter
@@ -1570,7 +1571,7 @@ Before switching production, Jenkins verifies the new version through the `:8080
   alt="Verification of the ALB test listener on port 8080" width="800">
 
 
-*Verification of the Green version through the ALB test listener on port 8080.*
+*Verification of the deployment version through the ALB test listener on port 8080.*
 
 ### 10.2 Check the Active Production Color
 
@@ -1603,12 +1604,12 @@ aws elbv2 describe-target-health \
 
 ### 10.3 ALB Security Group
 
-The ALB security group controls which traffic can reach the load balancer. It allows inbound HTTP on port `80` (production) and port `8080` (Green test listener).
+The ALB security group controls which traffic can reach the load balancer. It allows inbound HTTP on port 80 (production) and port 8080 (deployment-color test listener).
 
 <img src="screenshots/10.2-security-group-alb.png" alt="ALB security group inbound rules for ports 80 and 8080" width="800">
 
+ALB security group inbound rules.*
 
-*ALB security group inbound rules.*
 ---
 
 ## 11. Rollback Strategy
@@ -1669,7 +1670,7 @@ The alarms use an SNS topic for notification.
 
 ### SNS Notifications
 
-CloudWatch alarms send notifications through the SNS topic is:
+CloudWatch alarms send notifications through the following SNS topic:
 
 ```text
 capstone-devops-cicd-alerts
@@ -1690,7 +1691,7 @@ The project uses a log group similar to:
 
 This allows application container logs to be inspected without connecting directly to the Fargate host.
 
-### 11.1 Alarms Configured with Terraform
+### 12.1 Alarms Configured with Terraform
 
 The CloudWatch alarms are created by Terraform, so monitoring is part of the infrastructure code.
 
@@ -1699,7 +1700,7 @@ The CloudWatch alarms are created by Terraform, so monitoring is part of the inf
 
 *CloudWatch alarms created by Terraform.*
 
-### 11.2 ECS Logs and Metrics
+### 12.2 ECS Logs and Metrics
 
 ECS tasks send their container logs and service metrics to CloudWatch.
 
@@ -1713,14 +1714,14 @@ ECS tasks send their container logs and service metrics to CloudWatch.
 
 *ECS service metrics in CloudWatch.*
 
-### 11.3 Testing the Alarm
+### 12.3 Testing the Alarm
 
 To confirm the alarm works, I edited its settings so it would trigger easily, then checked that it changed state.
 
 <img src="screenshots/11.3-cloudwatch-alarm-edit.png" alt="Editing the CloudWatch alarm for testing" width="800">
 
 
-*Alarm settings edited for the test and recieved alert through mail*
+*Alarm settings edited for the test and received the alert by email*
 
 <img src="screenshots/11.4-test-cloudwatch-alarm.png" alt="CloudWatch alarm test" width="800">
 
