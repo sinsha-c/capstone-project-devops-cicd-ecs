@@ -1916,7 +1916,7 @@ Git Commit ──▶ Jenkins ──▶ SonarQube ──▶ Trivy ──▶ ECR �
 | Area | What was demonstrated |
 |------|-----------------------|
 | **Infrastructure** | Modular Terraform for VPC, public/private subnets, NAT, ECS, ALB and IAM, with remote state in S3 |
-| **Configuration** | Ansible roles that set up Docker, Jenkins, SonarQube, Prometheus, Grafana and Node Exporter |
+| **Configuration** | Ansible roles that automate the setup of Docker, Trivy, SonarQube, Prometheus, Grafana and Node Exporter. Jenkins is installed and configured separately. |
 | **CI/CD** | Jenkins pipeline with SonarQube quality gate, Trivy image scanning and Git-SHA image tags in ECR |
 | **Deployment** | Custom Blue-Green release on ECS Fargate with ALB listener switching and traffic-based rollback |
 | **Monitoring** | CloudWatch alarms with SNS notifications, plus Prometheus and Grafana dashboards |
