@@ -8,13 +8,13 @@ The implementation is intentionally built as a practical learning project rather
 
 ---
 
-# Project Overview
+## Project Overview
 
 The goal of this capstone is to build an automated DevOps workflow for a containerized web application running on **Amazon ECS Fargate**.
 
 The project contains two independent delivery paths:
 
-# Architecture Diagram
+## Architecture Diagram
 
 <img src="docs/Architecture-diagram.png" width="80%">
 
@@ -124,7 +124,7 @@ This prevents an application deployment from unnecessarily recreating AWS infras
 
 ---
 
-# What This Project Demonstrates
+## What This Project Demonstrates
 
 The completed project covers:
 
@@ -163,7 +163,7 @@ The completed project covers:
 
 ---
 
-# Technology Stack
+## Technology Stack
 
 | Technology | Purpose |
 |---|---|
@@ -187,7 +187,7 @@ The completed project covers:
 
 ---
 
-# Repository Structure
+### Repository Structure
 
 The repository is organized so that application, infrastructure and server-configuration responsibilities remain separate.
 
@@ -235,7 +235,7 @@ capstone-project-devops-cicd-ecs/
 
 ---
 
-# Tool Responsibilities
+### Tool Responsibilities
 
 A major design goal is to avoid overlapping responsibilities.
 
@@ -260,11 +260,11 @@ A major design goal is to avoid overlapping responsibilities.
 
 ---
 
-# AWS Infrastructure
+## AWS Infrastructure
 
 Terraform provisions the AWS application platform.
 
-## Main AWS resources
+### Main AWS resources
 
 ```text
 AWS
@@ -326,7 +326,7 @@ Private:
 
 ---
 
-# Network Design
+### Network Design
 
 The application uses a public/private network separation.
 
@@ -352,14 +352,14 @@ The application uses a public/private network separation.
                               ECS Blue   ECS Green
 ```
 
-## Public subnets
+### Public subnets
 
 The public subnets contain resources that require internet-facing connectivity:
 
 - Application Load Balancer
 - NAT Gateway
 
-## Private subnets
+### Private subnets
 
 ECS Fargate tasks run in private subnets.
 
@@ -387,9 +387,9 @@ This allows ECS tasks to access external services without exposing the tasks dir
 
 ---
 
-# Security Design
+## Security Design
 
-## ALB Security Group
+### ALB Security Group
 
 The ALB is the public entry point.
 
@@ -404,7 +404,7 @@ Source: 0.0.0.0/0
 
 The optional test listener on port `8080` is not intended to be treated as a general public application endpoint.
 
-## ECS Security Group
+### ECS Security Group
 
 ECS does not accept application traffic directly from the internet.
 
@@ -429,7 +429,7 @@ This creates a security boundary between the public load balancer and the privat
 
 ---
 
-# DevOps CI/CD EC2
+## DevOps CI/CD EC2
 
 A manually bootstrapped EC2 instance is used as the DevOps control server.
 
@@ -1027,7 +1027,7 @@ This keeps the Terraform code modular and easier to maintain.
 
 This provides a controlled infrastructure deployment process.
 
-<img src="screenshots/07-infra-pipeline-view.png" width="80%">
+<img src="screenshots/7.1-infra-pipeline-view.png" width="80%">
 
 #### 7.1 Infra Pipeline Required Inputs Before Apply
 
@@ -1762,59 +1762,9 @@ Without this separation, a later Terraform plan could attempt to replace the tas
 
 ---
 
-# Complete Project Flow
+## Final Validation Checklist
 
-Putting everything together:
-
-![Complete Project Flow](pipeline-flow.png)
-
-Text version of the same diagram:
-
-```text
-                         +----------------+
-                         |    GitHub      |
-                         +-------+--------+
-                                 |
-                    +------------+------------+
-                    |                         |
-                    v                         v
-             Infrastructure              Application
-                Pipeline                  Pipeline
-                    |                         |
-                    v                         v
-               Terraform                  Jenkins
-                    |                         |
-                    v                 +-------+--------+
-              AWS Foundation          |       |        |
-                                      v       v        v
-                                  SonarQube Docker   Trivy
-                                      |       |        |
-                                      +-------+--------+
-                                              |
-                                              v
-                                             ECR
-                                              |
-                                              v
-                                      ECS Task Revision
-                                              |
-                                              v
-                                      Inactive Color
-                                              |
-                                              v
-                                       Health Checks
-                                              |
-                                              v
-                                      ALB :80 Switch
-                                              |
-                                              v
-                                         Production
-```
-
----
-
-# Final Validation Checklist
-
-## Infrastructure
+### Infrastructure
 
 - [ ] VPC exists
 - [ ] Public subnets exist
@@ -1836,7 +1786,7 @@ Text version of the same diagram:
 - [ ] SNS subscription is confirmed
 - [ ] Terraform state exists in S3
 
-## DevOps server
+### DevOps server
 
 - [ ] Jenkins running
 - [ ] Docker running
@@ -1849,7 +1799,7 @@ Text version of the same diagram:
 - [ ] Prometheus running
 - [ ] Grafana running
 
-## Application pipeline
+### Application pipeline
 
 - [ ] GitHub webhook triggers Jenkins
 - [ ] SonarQube analysis succeeds
@@ -1864,7 +1814,7 @@ Text version of the same diagram:
 - [ ] ALB :80 switches successfully
 - [ ] Production application responds
 
-## Blue-Green validation
+### Blue-Green validation
 
 - [ ] Blue version can be identified
 - [ ] Green version can be identified
@@ -1876,15 +1826,15 @@ Text version of the same diagram:
 
 ---
 
-# Important Design Decisions
+## Important Design Decisions
 
-## 1. Infrastructure and application pipelines are separate
+### 1. Infrastructure and application pipelines are separate
 
 Terraform should not rebuild the infrastructure every time an application developer commits code.
 
 ---
 
-## 2. Jenkins does not store long-lived AWS access keys
+### 2. Jenkins does not store long-lived AWS access keys
 
 The DevOps EC2 uses an IAM role.
 
@@ -1892,7 +1842,7 @@ Jenkins and AWS CLI obtain permissions through the EC2 instance profile.
 
 ---
 
-## 3. ECS tasks are private
+### 3. ECS tasks are private
 
 The ECS tasks are not directly exposed to the internet.
 
@@ -1900,7 +1850,7 @@ The ALB is the public application entry point.
 
 ---
 
-## 4. Blue-Green does not use CodeDeploy
+### 4. Blue-Green does not use CodeDeploy
 
 This project implements Blue-Green orchestration using:
 
@@ -1918,7 +1868,7 @@ This makes the deployment mechanics visible and useful for learning.
 
 ---
 
-## 5. Git SHA tags are used for application images
+### 5. Git SHA tags are used for application images
 
 Instead of relying only on:
 
@@ -1930,19 +1880,19 @@ the application pipeline creates traceable image versions using the Git commit S
 
 ---
 
-## 6. Terraform does not overwrite Jenkins task-definition revisions
+### 6. Terraform does not overwrite Jenkins task-definition revisions
 
 The ECS service ignores task-definition changes in Terraform so Jenkins can manage application revisions safely.
 
 ---
 
-## 7. One NAT Gateway is used
+### 7. One NAT Gateway is used
 
 The project uses one NAT Gateway to keep the capstone architecture simpler and reduce infrastructure cost compared with deploying a NAT Gateway in every availability zone.
 
 ---
 
-## 8. The previous color is useful for rollback
+### 8. The previous color is useful for rollback
 
 Blue-Green deployment is not only about switching traffic.
 
@@ -1950,7 +1900,7 @@ The previous environment remains valuable because it provides a fast rollback pa
 
 ---
 
-# 13. Conclusion
+## 13. Conclusion
 
 This project delivers a secure, end-to-end DevOps pipeline for containerized applications on AWS. Infrastructure is provisioned as code, every code change passes automated security gates, and releases go live through a Blue-Green deployment that can be rolled back in seconds.
 
@@ -1985,7 +1935,7 @@ Git Commit ──▶ Jenkins ──▶ SonarQube ──▶ Trivy ──▶ ECR �
 
 ---
 
-## Project Repository
+### Project Repository
 
 GitHub: [sinsha-c/capstone-project-devops-cicd-ecs](https://github.com/sinsha-c/capstone-project-devops-cicd-ecs)
 
