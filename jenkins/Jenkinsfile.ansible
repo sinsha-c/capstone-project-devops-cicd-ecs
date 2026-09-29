@@ -4,7 +4,7 @@ pipeline {
 
     parameters {
         string(name: 'SERVER_IP', defaultValue: '', description: 'Target server IP for Ansible inventory')
-        string(name: 'SERVER_USER', defaultValue: 'ec2-user', description: 'SSH user for the target server')
+        string(name: 'SERVER_USER', defaultValue: 'ubuntu', description: 'SSH user for the target server')
     }
 
     stages {

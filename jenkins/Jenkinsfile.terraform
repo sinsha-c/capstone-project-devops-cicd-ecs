@@ -7,7 +7,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 git branch: 'main',
-                    url: '${REPO_URL}'
+                    url: env.REPO_URL
             }
         }
 
@@ -34,9 +34,9 @@ pipeline {
                 }
             }
         }
+
         stage('Terraform Apply') {
             steps {
-
                 input message: 'Apply Terraform infrastructure?'
 
                 dir('terraform') {
@@ -46,4 +46,3 @@ pipeline {
         }
     }
 }
-
