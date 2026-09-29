@@ -221,7 +221,7 @@ capstone-project-devops-cicd-ecs/
 │
 ├── jenkins/
 │   ├── Jenkinsfile.ansible
-    ├── Jenkinsfile.terraform
+│   ├── Jenkinsfile.terraform
 │   └── Jenkinsfile.rollback
 │
 ├── screenshots/
@@ -1110,7 +1110,7 @@ Finally, open `application_url` in a browser and confirm the application respond
 
 <img src="screenshots/7.3-terraform-apply-success.png" width="80%">
 
-#### 7.4 TTerraform Backend — Remote State in S3
+#### 7.4 Terraform Backend — Remote State in S3
 Before running `terraform init`, confirm the backend is configured so state is stored remotely in S3 instead of locally on the Jenkins workspace.
 
 **terraform/backend.tf**
