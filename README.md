@@ -764,6 +764,7 @@ ansible-playbook -i inventory.ini site.yml
 ```
 
 > Moved all ansible playbook in Jenkins:
+> Before running the Ansible Jenkins pipeline, copy the Jenkins server's SSH public key to the target DevOps server's ~/.ssh/authorized_keys file.
 
 [Refer the Jenkins job code](jenkins/Jenkinsfile.ansible)
 
