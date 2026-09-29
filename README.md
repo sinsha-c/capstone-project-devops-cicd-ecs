@@ -207,6 +207,7 @@ capstone-project-devops-cicd-ecs/
 │   ├── inventory.ini
 │   ├── requirements.yml
 │   ├── site.yml
+│   ├── playbooks/
 │   └── roles/
 │       ├── docker/
 │       ├── trivy/
@@ -1726,7 +1727,7 @@ To confirm the alarm works, I edited its settings so it would trigger easily, th
 <img src="screenshots/11.4-test-cloudwatch-alarm.png" alt="CloudWatch alarm test" width="800">
 
 
-*Alarm state changed to `In alaram` .*
+*Alarm state changed to `In Alarm` .*
 
 <img src="screenshots/11.5-in-alarm-state.png" alt="CloudWatch alarm in ALARM state" width="800">
 
