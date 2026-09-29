@@ -195,8 +195,8 @@ The repository is organized so that application, infrastructure and server-confi
 capstone-project-devops-cicd-ecs/
 │
 ├── Jenkinsfile
-├── sonar-project.properties
 ├── README.md
+├── sonar-project.properties
 │
 ├── app/
 │   ├── Dockerfile
@@ -207,30 +207,31 @@ capstone-project-devops-cicd-ecs/
 │   ├── inventory.ini
 │   ├── requirements.yml
 │   ├── site.yml
-│   │
-│   ├── roles/
-│   │   ├── trivy/
-│   │   ├── sonarqube/
-│   │   ├── node_exporter/
-│   │   ├── prometheus/
-│   │   └── grafana/
-│   │
-│   └── playbooks/
+│   └── roles/
+│       ├── docker/
+│       ├── trivy/
+│       ├── sonarqube/
+│       ├── node_exporter/
+│       ├── prometheus/
+│       └── grafana/
+│
+├── docs/
+│
+├── grafana/
+│
+├── jenkins/
+│   ├── Jenkinsfile.ansible
+    ├── Jenkinsfile.terraform
+│   └── Jenkinsfile.rollback
+│
+├── screenshots/
 │
 └── terraform/
+    ├── backend.tf
     ├── main.tf
     ├── variables.tf
     ├── outputs.tf
-    ├── terraform.tfvars
-    │
     └── modules/
-        ├── vpc/
-        ├── security/
-        ├── ecr/
-        ├── iam/
-        ├── alb/
-        ├── ecs/
-        └── cloudwatch/
 ```
 
 ---
@@ -762,7 +763,7 @@ ansible-playbook -i inventory.ini site.yml
 
 > Moved all ansible playbook in Jenkins:
 
-[Refer the Jenkins job code ](jenkins/Jenkinsfile.ansible)
+[Refer the Jenkins job code](jenkins/Jenkinsfile.ansible)
 
 <img src="screenshots/05-ansible-moved-jenkins.png" width="80%">
 
@@ -1384,7 +1385,7 @@ The `aws ecs describe-services` output confirms that both services exist and are
 
 <img src="screenshots/8.5-ecs-service-running-count.png" alt="AWS CLI output showing Blue service with 1 running task and Green service with 0 running tasks" width="800">
 
-Blue is serving production with one running task. Green is created and ready but idle, with no tasks running and no cost, until the pipeline deploys a new version to it.
+Blue initially runs the production task while Green starts with zero tasks. During a deployment, Jenkins scales the inactive service to the required task count and deploys the new revision. After validation, production traffic is switched to the new color, while the previous color remains available for rollback.
 
 *Blue service running 1 task, Green service active with 0 tasks.*
 
@@ -1553,11 +1554,11 @@ Each has an HTTP health check on path `/` expecting `200`. Traffic goes only to 
 
 | Listener | Purpose |
 |----------|---------|
-| `HTTP :80` | Production listener. Forwards traffic to the active target group. This is where the Blue/Green switch happens. |
-| `HTTP :8080` | Fixed test listener that always points to the Green target group. It is not the production switch. |
+| `HTTP :80` | Production listener. Forwards traffic to the currently active Blue or Green target group.s. |
+| `HTTP :8080` | Test listener. Jenkins temporarily routes it to the inactive/deployment color for validation before production traffic is switched. |
 
 ```text
-HTTP :8080 ──▶ Green Target Group   (testing only)
+HTTP :8080 ──▶ Deployment Target Group (testing)
 HTTP :80   ──▶ Active Target Group  (production)
 ```
 

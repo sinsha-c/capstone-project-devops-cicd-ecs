@@ -16,8 +16,8 @@ private_subnet_cidrs = [
 
 container_port = 80
 
-jenkins_source_ip = "15.252.70.189/32"
+jenkins_source_ip = "<PUBLIC-IP>/32"
 
 desired_count = 1
 
-alert_email = "mailtosinsha@gmail.com"
+alert_email = "<your-mail-id>"
