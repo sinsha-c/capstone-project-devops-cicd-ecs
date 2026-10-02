@@ -1213,8 +1213,6 @@ http://127.0.0.1/
 ```Dockerfile
 FROM nginx:alpine
 
-RUN apk update && apk upgrade
-
 COPY index.html /usr/share/nginx/html/index.html
 
 EXPOSE 80
@@ -1273,7 +1271,7 @@ If a blocking vulnerability is found, the pipeline stops before the image reache
 
 #### Failed Scan
 
-The first run failed because the Alpine base image had outdated packages with known HIGH/CRITICAL vulnerabilities. The pipeline stopped and nothing was pushed or deployed.
+**The first Trivy scan failed because the Alpine image had outdated packages with known HIGH/CRITICAL vulnerabilities. The Dockerfile was updated to run apk update && apk upgrade before rebuilding and scanning the image.**
 
 <img src="screenshots/8.3-trivy-scan-failed.png" alt="Trivy scan failed with vulnerabilities in the Alpine image" width="800">
 
@@ -1283,10 +1281,20 @@ The first run failed because the Alpine base image had outdated packages with kn
 
 #### Fix
 
-Since patched versions were available, I updated the packages in the `Dockerfile`:
+Since patched versions were available, I updated the packages in the `Dockerfile`: to run apk update && apk upgrade before rebuilding and rescanning the image.
 
-```dockerfile
+```Dockerfile
+FROM nginx:alpine
+
 RUN apk update && apk upgrade
+
+COPY index.html /usr/share/nginx/html/index.html
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=3s \
+    CMD wget -q -O /dev/null http://127.0.0.1/ || exit 1
+
 ```
 
 #### Passed Scan
