@@ -1946,7 +1946,8 @@ Git Commit ──▶ Jenkins ──▶ SonarQube ──▶ Trivy ──▶ ECR �
 - Add a Jenkins webhook approval step before the production switch
 
 ---
-### Cleanup
+
+## Cleanup
 
 ### AWS Resource Cleanup
 
@@ -1965,7 +1966,7 @@ After completing the project, clean up the AWS resources to avoid unnecessary ch
 
 <img src="screenshots/12-terraform-destroy-stage.png" width="80%">
 
-### Project Repository
+## Project Repository
 
 GitHub: [sinsha-c/capstone-project-devops-cicd-ecs](https://github.com/sinsha-c/capstone-project-devops-cicd-ecs)
 
