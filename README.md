@@ -1946,6 +1946,24 @@ Git Commit ──▶ Jenkins ──▶ SonarQube ──▶ Trivy ──▶ ECR �
 - Add a Jenkins webhook approval step before the production switch
 
 ---
+### Cleanup
+
+### AWS Resource Cleanup
+
+After completing the project, clean up the AWS resources to avoid unnecessary charges:
+
+1. Run Terraform destroy either:
+   - Directly from the DevOps EC2 instance using terraform destroy, or
+   - From Jenkins using the already-created Terraform Destroy job.
+2. Once the Terraform resources are destroyed:
+   - Manually terminate the DevOps CI/CD EC2 instance.
+   - Delete the Terraform backend S3 state bucket if the project is no longer required.
+
+#### Terraform Destroy Jenkins View
+
+<img src="screenshots/12-terraform-destroy-confirmation.png" width="80%">
+
+<img src="screenshots/12-terraform-destroy-stage.png" width="80%">
 
 ### Project Repository
 
